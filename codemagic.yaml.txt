@@ -1,0 +1,95 @@
+workflows:
+  build-android-signed:
+    name: Build Android Signed
+    max_build_duration: 120
+    environment:
+      node: 18.20.0
+      vars:
+        # Set these as secure environment variables in Codemagic
+        ANDROID_KEYSTORE_BASE64: ""
+        ANDROID_KEYSTORE_PASSWORD: ""
+        ANDROID_KEY_ALIAS: ""
+        ANDROID_KEY_PASSWORD: ""
+    scripts:
+      - name: Debug workspace
+        script: |
+          pwd
+          ls -la
+          echo "Finding package.json"
+          find . -maxdepth 3 -name package.json -print || true
+
+      - name: Enter project folder
+        script: |
+          if [ -d "LifeOS" ]; then
+            cd LifeOS
+          fi
+          echo "Working dir: $(pwd)"
+          cat package.json || true
+
+      - name: Install dependencies
+        script: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Ensure Capacitor config and Android platform
+        script: |
+          if [ ! -f capacitor.config.json ] && [ ! -f capacitor.config.ts ] && [ ! -f capacitor.config.mjs ]; then
+            npx cap init com.lifeos.app LifeOS --web-dir=public
+          fi
+          if [ ! -d android ]; then
+            npx cap add android || true
+          fi
+          npx cap sync android
+
+      - name: Build web assets
+        script: |
+          echo "No build step configured; using static files in public/"
+          # If you have a build step, replace the line above with: npm run build
+
+      - name: Write keystore from base64
+        script: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 is empty; skipping keystore write"
+          else
+            echo "Decoding keystore to ${HOME}/keystore.jks"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "${HOME}/keystore.jks"
+            chmod 600 "${HOME}/keystore.jks"
+            ls -l "${HOME}/keystore.jks"
+          fi
+
+      - name: Prepare Android build
+        script: |
+          if [ -d android ]; then
+            cd android
+            chmod +x ./gradlew
+            cd ..
+          fi
+
+      - name: Assemble Android Release signed
+        script: |
+          cd android
+          # Pass signing properties to Gradle via -P flags so Gradle will sign the build
+          GRADLE_CMD="./gradlew assembleRelease --no-daemon"
+          if [ -f "${HOME}/keystore.jks" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "Running Gradle with signing properties"
+            $GRADLE_CMD -Pandroid.injected.signing.store.file="${HOME}/keystore.jks" -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+          else
+            echo "Signing variables or keystore missing; running unsigned assembleRelease"
+            $GRADLE_CMD || true
+          fi
+
+      - name: Locate artifacts
+        script: |
+          find android -type f -name "*release*.apk" -o -name "*.aab" -print || true
+
+    artifacts:
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
+
+    publishing:
+      email:
+        recipients:
+          - alixialalla@gmail.com
