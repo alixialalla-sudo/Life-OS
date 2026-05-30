@@ -1,1 +1,47 @@
-null
+workflows:
+  capacitor-android:
+    name: LifeOS V11 Android APK Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+
+    environment:
+      node: 18
+      java: 17
+
+    triggering:
+      events:
+        - push
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install
+
+      - name: Build web assets
+        script: |
+          npm run build --if-present
+
+      - name: Verify Capacitor
+        script: |
+          npx cap doctor
+
+      - name: Sync Android platform
+        script: |
+          npx cap sync android
+
+      - name: Build Android APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
+
+    publishing:
+      email:
+        recipients:
+          - alixialalla@gmail.com
+        notify:
+          success: true
+          failure: true
