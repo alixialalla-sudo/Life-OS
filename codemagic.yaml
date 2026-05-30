@@ -1,0 +1,40 @@
+workflows:
+  capacitor-android:
+    name: LifeOS V11 Android APK Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1 # Highly reliable environment for hybrid builds
+    environment:
+      node: 18
+      java: 17
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - target: main
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install
+      - name: Build Web Assets
+        script: |
+          # If you have a custom bundler build script, run it here.
+          # For your raw vanilla public/ layout, we ensure the directory exists.
+          npm run build --if-present
+      - name: Configure Capacitor Android platform
+        script: |
+          # Syncs web code into the native android wrap configuration
+          npx cap sync android
+      - name: Build Android Development APK
+        script: |
+          cd android
+          # Runs the gradle compiler to output your installable application package
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com # Replace this with your actual email address
+        notify:
+          success: true
+          failure: true
